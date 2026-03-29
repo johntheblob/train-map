@@ -3,46 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <title>SL Metro – Linje 14</title>
-
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-
 <style>
-html, body { margin: 0; height: 100%; }
-#map { height: 100%; }
-
+html, body { margin:0; height:100%; }
+#map { height:100%; }
 #panel {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    z-index: 1000;
-    font-family: Arial;
-    width: 220px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    position:absolute; top:10px; right:10px;
+    background:white; padding:15px; border-radius:12px;
+    z-index:1000; font-family:Arial; width:220px;
+    box-shadow:0 0 10px rgba(0,0,0,0.2);
 }
 </style>
 </head>
-
 <body>
-
 <div id="map"></div>
-
 <div id="panel">
-    <b>🚇 Linje 14</b><br>
-    <div id="info">Laddar...</div>
+<b>🚇 Linje 14</b><br>
+<div id="info">Laddar...</div>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
 <script>
-// ================= MAP =================
-const map = L.map('map').setView([59.33, 18.06], 11);
 
+const map = L.map('map').setView([59.33, 18.06], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// ================= STATIONS =================
+
 const stations = [
     {name:"Fruängen", pos:[59.285,17.965]},
     {name:"Västertorp", pos:[59.292,17.970]},
@@ -63,138 +49,121 @@ const stations = [
     {name:"Mörby centrum", pos:[59.398,18.036]}
 ];
 
-// ================= LINE =================
-const lineCoords = stations.map(s => s.pos);
+const lineCoords = stations.map(s=>s.pos);
+L.polyline(lineCoords,{color:"red",weight:6}).addTo(map);
+stations.forEach(s=>L.circleMarker(s.pos,{radius:6,color:"black",fillColor:"white",fillOpacity:1})
+  .addTo(map).bindPopup(s.name));
 
-L.polyline(lineCoords, {
-    color: "red",
-    weight: 6
-}).addTo(map);
-
-// ================= STATION MARKERS =================
-stations.forEach(s => {
-    L.circleMarker(s.pos, {
-        radius: 6,
-        color: "black",
-        fillColor: "white",
-        fillOpacity: 1
-    }).addTo(map).bindPopup(s.name);
-});
-
-// ================= TRAIN ICON =================
-const trainIcon = L.icon({
-    iconUrl: "https://cdn-icons-png.flaticon.com/512/71/71298.png",
-    iconSize: [32,32]
-});
-
+const trainIcon = L.icon({iconUrl:"https://cdn-icons-png.flaticon.com/512/71/71298.png",iconSize:[32,32]});
 let markers = {};
+let trainsData = {};
 
-// ================= 🔥 EXAKT CONVERT (FRUÄNGEN) =================
-const origin = {
-    x: 1396.36,
-    z: -2190.94,
-    lat: 59.285,
-    lon: 17.965
-};
-
+const origin = { x:1396.36, z:-2190.94, lat:59.285, lon:17.965 };
 const scale = 0.00001;
+function convert(x,z){return [origin.lat+(z-origin.z)*scale, origin.lon+(x-origin.x)*scale];}
 
-function convert(x, z) {
-    return [
-        origin.lat + (z - origin.z) * scale,
-        origin.lon + (x - origin.x) * scale
-    ];
+function snapToTrack(lat, lon){
+  let closestPoint=null, minDist=Infinity;
+  for(let i=0;i<stations.length-1;i++){
+    const A=stations[i].pos, B=stations[i+1].pos;
+    const AP=[lat-A[0], lon-A[1]], AB=[B[0]-A[0], B[1]-A[1]];
+    const ab2=AB[0]*AB[0]+AB[1]*AB[1];
+    const t=Math.max(0,Math.min(1,(AP[0]*AB[0]+AP[1]*AB[1])/ab2));
+    const point=[A[0]+AB[0]*t, A[1]+AB[1]*t];
+    const dist=Math.hypot(lat-point[0], lon-point[1]);
+    if(dist<minDist){ minDist=dist; closestPoint=point; }
+  }
+  return closestPoint;
 }
 
-// ================= SNAP TO TRACK =================
-function snapToTrack(lat, lon) {
-    let closestPoint = null;
-    let minDist = Infinity;
-
-    for (let i = 0; i < stations.length - 1; i++) {
-        const A = stations[i].pos;
-        const B = stations[i+1].pos;
-
-        const AP = [lat - A[0], lon - A[1]];
-        const AB = [B[0] - A[0], B[1] - A[1]];
-
-        const ab2 = AB[0]*AB[0] + AB[1]*AB[1];
-        const ap_ab = AP[0]*AB[0] + AP[1]*AB[1];
-
-        let t = ap_ab / ab2;
-        t = Math.max(0, Math.min(1, t));
-
-        const point = [
-            A[0] + AB[0]*t,
-            A[1] + AB[1]*t
-        ];
-
-        const dist = Math.hypot(lat - point[0], lon - point[1]);
-
-        if (dist < minDist) {
-            minDist = dist;
-            closestPoint = point;
-        }
-    }
-
-    return closestPoint;
+function nearestStation(lat, lon){
+  let closest=stations[0], min=Infinity;
+  stations.forEach(s=>{let d=Math.hypot(s.pos[0]-lat,s.pos[1]-lon); if(d<min){min=d;closest=s;}});
+  return closest.name;
 }
 
-// ================= NEAREST STATION =================
-function nearestStation(lat, lon) {
-    let closest = stations[0];
-    let min = Infinity;
+function getNextSegment(train){
+  let closestSegment=0,minDist=Infinity;
+  for(let i=0;i<stations.length-1;i++){
+    const A=stations[i].pos;
+    const d=Math.hypot(train.lat-A[0], train.lon-A[1]);
+    if(d<minDist){minDist=d; closestSegment=i;}
+  }
+  return closestSegment;
+}
 
-    stations.forEach(s => {
-        let d = Math.hypot(s.pos[0]-lat, s.pos[1]-lon);
-        if (d < min) {
-            min = d;
-            closest = s;
-        }
+function moveTrainAlongLine(train){
+  let idx=train.segmentIndex??getNextSegment(train);
+  const A=stations[idx].pos,B=stations[idx+1].pos;
+  let vec=[B[0]-A[0], B[1]-A[1]];
+  const length=Math.hypot(vec[0],vec[1]); vec[0]/=length; vec[1]/=length;
+
+ 
+  const stopDistance=0.0008; // ca 80m
+  const nextStation=stations[idx+1].pos;
+  const distToNext=Math.hypot(train.lat-nextStation[0], train.lon-nextStation[1]);
+
+  const maxSpeed=0.00007; // max hastighet
+  const minSpeed=0.00001; // broms
+  if(distToNext<stopDistance){ train.targetSpeed=minSpeed; }
+  else { train.targetSpeed=maxSpeed; }
+
+
+  const acc=0.000002;
+  if(train.speed===undefined) train.speed=0;
+  train.speed += Math.sign(train.targetSpeed-train.speed)*acc;
+  train.speed=Math.max(minSpeed, Math.min(train.speed, maxSpeed));
+
+  train.lat+=vec[0]*train.speed;
+  train.lon+=vec[1]*train.speed;
+  train.segmentIndex=idx;
+
+
+  if(distToNext<stopDistance/2 && idx<stations.length-2){ train.segmentIndex=idx+1; }
+
+  return [train.lat, train.lon];
+}
+
+
+async function loadTrains(){
+  try{
+    const res=await fetch("https://train-api-7hml.onrender.com/trains");
+    const data=await res.json();
+    let info="";
+
+    data.forEach(train=>{
+      if(!trainsData[train.id]){
+        let [lat, lon]=convert(train.x, train.z);
+        [lat, lon]=snapToTrack(lat, lon);
+        trainsData[train.id]={lat, lon, speed:0};
+      }
+
+      let trainObj=trainsData[train.id];
+      [trainObj.lat, trainObj.lon]=moveTrainAlongLine(trainObj);
+      const station=nearestStation(trainObj.lat, trainObj.lon);
+
+      if(markers[train.id]){
+        markers[train.id].setLatLng([trainObj.lat, trainObj.lon]);
+      } else{
+        markers[train.id]=L.marker([trainObj.lat, trainObj.lon],{icon:trainIcon})
+          .addTo(map)
+          .bindPopup(`🚆 ${train.id}<br>📍 ${station}`);
+      }
+
+      info+=`🚆 ${train.id}<br>📍 ${station}<br><br>`;
     });
 
-    return closest.name;
+    document.getElementById("info").innerHTML=info;
+
+  }catch(e){
+    document.getElementById("info").innerText="API fel";
+  }
 }
 
-// ================= LOAD TRAINS =================
-async function loadTrains() {
-    try {
-        const res = await fetch("https://train-api-7hml.onrender.com/trains");
-        const data = await res.json();
 
-        let info = "";
-
-        data.forEach(train => {
-            let [lat, lon] = convert(train.x, train.z);
-
-            // 🔥 EXAKT PÅ SPÅR
-            [lat, lon] = snapToTrack(lat, lon);
-
-            let station = nearestStation(lat, lon);
-
-            if (markers[train.id]) {
-                markers[train.id].setLatLng([lat, lon]);
-            } else {
-                markers[train.id] = L.marker([lat, lon], {icon: trainIcon})
-                    .addTo(map)
-                    .bindPopup(`🚆 ${train.id}<br>📍 ${station}`);
-            }
-
-            info += `🚆 ${train.id}<br>📍 ${station}<br><br>`;
-        });
-
-        document.getElementById("info").innerHTML = info;
-
-    } catch (e) {
-        document.getElementById("info").innerText = "API fel";
-    }
-}
-
-// ================= START =================
 loadTrains();
-setInterval(loadTrains, 3000);
+setInterval(loadTrains,3000);
 
 </script>
-
 </body>
 </html>
