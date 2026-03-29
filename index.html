@@ -87,12 +87,28 @@ function snapToTrack(lat, lon){
     return closestPoint;
 }
 
+// Beräkna vinkel längs spåret
+function getTrackAngle(lat, lon){
+    let closestIndex=0, minDist=Infinity;
+    for(let i=0;i<stations.length-1;i++){
+        const A=stations[i].pos, B=stations[i+1].pos;
+        const dx=B[1]-A[1], dy=B[0]-A[0];
+        const t=Math.max(0, Math.min(1, ((lat-A[0])*dy + (lon-A[1])*dx)/(dx*dx + dy*dy)));
+        const px=A[0]+dy*t, py=A[1]+dx*t;
+        const dist=Math.hypot(lat-px, lon-py);
+        if(dist<minDist){ minDist=dist; closestIndex=i; minDist=dist; }
+    }
+    const A=stations[closestIndex].pos, B=stations[closestIndex+1].pos;
+    const angle=Math.atan2(B[0]-A[0], B[1]-A[1])*180/Math.PI;
+    return angle;
+}
+
 // Närmaste station
 function nearestStation(lat, lon){
     let closest=stations[0], min=Infinity;
     stations.forEach(s=>{
         let d=Math.hypot(s.pos[0]-lat,s.pos[1]-lon);
-        if(d<min){ min=d; closest=s; }
+        if(d<min){ min=d; closest=s; min=d; }
     });
     return closest.name;
 }
@@ -108,8 +124,7 @@ async function loadTrains(){
         data.forEach(train=>{
             let [lat, lon] = convert(train.x, train.z);
             [lat, lon] = snapToTrack(lat, lon);
-            const dir = train.dir ?? 1;
-            const angle = dir > 0 ? 0 : 180; // inverted. solves bugfix
+            const angle = getTrackAngle(lat, lon);
             const station = nearestStation(lat, lon);
 
             if(markers[train.id]){
