@@ -1,85 +1,110 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <meta charset="UTF-8">
-    <title>Train Tracker</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-    <style>
-        html, body { margin: 0; padding: 0; height: 100%; }
-        #map { height: 100%; }
-        #debug {
-            position: absolute;
-            top: 0;
-            left: 0;
-            background: rgba(255,255,255,0.9);
-            z-index: 1000;
-            max-height: 200px;
-            overflow: auto;
-            font-family: monospace;
-            padding: 5px;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Metro Tracker</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+html, body { margin: 0; height: 100%; }
+#map { height: 100%; }
+
+#info {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: white;
+    padding: 10px;
+    z-index: 1000;
+    border-radius: 8px;
+    font-family: Arial;
+}
+</style>
 </head>
+
 <body>
 
 <div id="map"></div>
-<div id="debug"></div>
+<div id="info">🚇 Metro Tracker</div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script>
-const map = L.map('map').setView([57.7, 11.9], 6);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+<script>
+// === KARTA ===
+const map = L.map('map').setView([57.7, 11.9], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// === RÖDA LINJEN (SPÅR) ===
+const redLine = [
+    [57.70, 11.90],
+    [57.71, 11.92],
+    [57.72, 11.95],
+    [57.74, 11.98]
+];
+
+const line = L.polyline(redLine, {
+    color: "red",
+    weight: 5
 }).addTo(map);
 
+// === TÅGIKON ===
+const trainIcon = L.icon({
+    iconUrl: "https://cdn-icons-png.flaticon.com/512/71/71298.png",
+    iconSize: [30, 30]
+});
+
+// === MARKERS ===
 let markers = {};
 
-// Konvertera Roblox X/Z till lat/lon (justera vid behov)
+// === KONVERTERING ===
 function convert(x, z) {
     return [
-        57.7 + (z / 1000),   // lat
-        11.9 + (x / 1000)    // lon
+        57.7 + (z / 1000),
+        11.9 + (x / 1000)
     ];
 }
 
+// === LADDA TÅG ===
 async function loadTrains() {
     try {
         const res = await fetch("https://train-api-7hml.onrender.com/trains");
         const data = await res.json();
 
-        document.getElementById("debug").innerText = JSON.stringify(data, null, 2);
-
-        let latlngs = [];
+        let bounds = [];
 
         data.forEach(train => {
             const [lat, lon] = convert(train.x, train.z);
-            latlngs.push([lat, lon]);
+            bounds.push([lat, lon]);
 
             if (markers[train.id]) {
                 markers[train.id].setLatLng([lat, lon]);
             } else {
-                markers[train.id] = L.marker([lat, lon]).addTo(map)
-                    .bindPopup(train.id);
+                markers[train.id] = L.marker([lat, lon], {icon: trainIcon})
+                    .addTo(map)
+                    .bindPopup(`
+                        🚆 <b>${train.id}</b><br>
+                        Lat: ${lat.toFixed(3)}<br>
+                        Lon: ${lon.toFixed(3)}
+                    `);
             }
         });
 
-        if (latlngs.length > 0) {
-            const bounds = L.latLngBounds(latlngs);
+        if (bounds.length > 0) {
             map.fitBounds(bounds, {padding: [50, 50]});
         }
 
-    } catch (e) {
-        console.error("Kunde inte ladda tåg:", e);
-        document.getElementById("debug").innerText = "Fel vid laddning av tåg: " + e;
+    } catch (err) {
+        document.getElementById("info").innerText = "❌ API error";
+        console.error(err);
     }
 }
 
-// Kör direkt
+// Starta
 loadTrains();
-// Uppdatera var 3:e sekund
 setInterval(loadTrains, 3000);
-</script>
 
+</script>
 </body>
 </html>
