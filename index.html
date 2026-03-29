@@ -23,12 +23,14 @@ html, body { margin:0; height:100%; }
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://rawgit.com/bbecquet/Leaflet.RotatedMarker/master/leaflet.rotatedMarker.js"></script>
+
 <script>
-// MAP
+// ================= MAP =================
 const map = L.map('map').setView([59.33, 18.06], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// STATIONS
+// ================= STATIONS =================
 const stations = [
     {name:"Fruängen", pos:[59.285,17.965]},
     {name:"Västertorp", pos:[59.292,17.970]},
@@ -83,25 +85,36 @@ function nearestStation(lat, lon){
   return closest.name;
 }
 
-// LOAD TRAINS
+// ================= LOAD TRAINS =================
 async function loadTrains(){
   try{
     const res=await fetch("https://train-api-7hml.onrender.com/trains");
     const data=await res.json();
     let info="";
+
     data.forEach(train=>{
       let [lat, lon]=convert(train.x, train.z);
       [lat, lon]=snapToTrack(lat, lon);
+
+      // RIKTNING
+      // dir = 1 -> Fruängen→Mörby, dir = -1 -> Mörby→Fruängen
+      const dir = train.dir ?? 1;
+      const angle = dir>0 ? 0 : 180; // enkel rotation
+
       const station=nearestStation(lat, lon);
 
       if(markers[train.id]){
         markers[train.id].setLatLng([lat, lon]);
+        markers[train.id].setRotationAngle(angle);
       } else{
-        markers[train.id]=L.marker([lat, lon],{icon:trainIcon}).addTo(map).bindPopup(`🚆 ${train.id}<br>📍 ${station}`);
+        markers[train.id]=L.marker([lat, lon], {icon:trainIcon, rotationAngle: angle})
+          .addTo(map)
+          .bindPopup(`🚆 ${train.id}<br>📍 ${station}`);
       }
 
       info+=`🚆 ${train.id}<br>📍 ${station}<br><br>`;
     });
+
     document.getElementById("info").innerHTML=info;
   }catch(e){
     document.getElementById("info").innerText="API fel";
