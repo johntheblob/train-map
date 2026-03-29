@@ -109,7 +109,7 @@ async function loadTrains(){
             let [lat, lon] = convert(train.x, train.z);
             [lat, lon] = snapToTrack(lat, lon);
             const dir = train.dir ?? 1;
-            const angle = dir > 0 ? 180 : 0; // inverted. solves bugfix
+            const angle = dir > 0 ? 0 : 180; // inverted. solves bugfix
             const station = nearestStation(lat, lon);
 
             if(markers[train.id]){
