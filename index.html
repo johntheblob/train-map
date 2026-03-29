@@ -1,157 +1,183 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>SL Tunnelbana – Röda linjen 14</title>
+<title>SL MAX LEVEL</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
-html, body { margin:0; height:100%; }
+html, body { margin:0; height:100%; background:#0b0f14; }
 #map { height:100%; }
-#panel {
-    position:absolute; top:10px; right:10px;
-    background:white; padding:15px; border-radius:12px;
-    z-index:1000; font-family:Arial; width:220px;
-    box-shadow:0 0 10px rgba(0,0,0,0.2);
+
+#hud {
+    position:absolute;
+    bottom:20px;
+    left:20px;
+    background:rgba(0,0,0,0.7);
+    color:white;
+    padding:15px;
+    border-radius:12px;
+    font-family:Arial;
+    z-index:1000;
+}
+
+.leaflet-interactive {
+    filter: drop-shadow(0 0 6px red);
 }
 </style>
 </head>
 <body>
+
 <div id="map"></div>
-<div id="panel">
-<b>🚇 Linje 14 – Röda linjen</b><br>
-<div id="info">Laddar...</div>
-</div>
+<div id="hud">🚇 SL Live</div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://rawgit.com/bbecquet/Leaflet.RotatedMarker/master/leaflet.rotatedMarker.js"></script>
 
 <script>
-// Initiera karta
-const map = L.map('map').setView([59.33, 18.06], 11);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// ================= MAP =================
+const map = L.map('map').setView([59.33,18.06],11);
 
-// Stationsdata för röda linjen (Fruängen → Mörby)
-const stations = [
-    {name:"Fruängen", pos:[59.285,17.965]},
-    {name:"Västertorp", pos:[59.292,17.970]},
-    {name:"Hägerstensåsen", pos:[59.300,17.975]},
-    {name:"Telefonplan", pos:[59.304,17.980]},
-    {name:"Midsommarkransen", pos:[59.310,17.990]},
-    {name:"Liljeholmen", pos:[59.309,18.022]},
-    {name:"Hornstull", pos:[59.316,18.033]},
-    {name:"Zinkensdamm", pos:[59.317,18.049]},
-    {name:"Mariatorget", pos:[59.318,18.060]},
-    {name:"Slussen", pos:[59.319,18.073]},
-    {name:"Gamla stan", pos:[59.324,18.067]},
-    {name:"T-Centralen", pos:[59.330,18.059]},
-    {name:"Östermalmstorg", pos:[59.336,18.073]},
-    {name:"Stadion", pos:[59.342,18.079]},
-    {name:"Tekniska högskolan", pos:[59.345,18.072]},
-    {name:"Universitetet", pos:[59.365,18.054]},
-    {name:"Mörby centrum", pos:[59.398,18.036]}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    opacity:0.5
+}).addTo(map);
+
+// ================= LINE =================
+const line14 = [
+[59.285,17.965],[59.292,17.970],[59.300,17.975],
+[59.304,17.980],[59.310,17.990],[59.309,18.022],
+[59.316,18.033],[59.317,18.049],[59.318,18.060],
+[59.319,18.073],[59.324,18.067],[59.330,18.059],
+[59.336,18.073],[59.342,18.079],[59.345,18.072],
+[59.365,18.054],[59.398,18.036]
 ];
 
-// Rita spåret
-L.polyline(stations.map(s=>s.pos), {color:"red", weight:6}).addTo(map);
-stations.forEach(s=>L.circleMarker(s.pos,{radius:6,color:"black",fillColor:"white",fillOpacity:1})
-    .addTo(map)
-    .bindPopup(s.name));
+const names = [
+"Fruängen","Västertorp","Hägerstensåsen","Telefonplan",
+"Midsommarkransen","Liljeholmen","Hornstull","Zinkensdamm",
+"Mariatorget","Slussen","Gamla stan","T-Centralen",
+"Östermalmstorg","Stadion","Tekniska högskolan",
+"Universitetet","Mörby centrum"
+];
 
-// Ikon för tåg
-const trainIcon = L.icon({
-    iconUrl:"https://cdn-icons-png.flaticon.com/512/71/71298.png",
-    iconSize:[32,32]
+L.polyline(line14,{color:"#ff2d2d",weight:8}).addTo(map);
+
+line14.forEach((p,i)=>{
+    L.circleMarker(p,{
+        radius:5,color:"#fff",fillColor:"#ff2d2d",fillOpacity:1
+    }).addTo(map).bindPopup(names[i]);
 });
 
-let markers = {};
+// ================= TRAIN =================
+const icon = L.icon({
+    iconUrl:"https://cdn-icons-png.flaticon.com/512/71/71298.png",
+    iconSize:[28,28]
+});
 
-// Konvertera Roblox koordinater till lat/lon
-const origin = { x:1396.36, z:-2190.94, lat:59.285, lon:17.965 };
-const scale = 0.00001;
+let markers={}, targets={}, speeds={};
+
+// Roblox mapping
+const origin={x:1396.36,z:-2190.94,lat:59.285,lon:17.965};
+const scale=0.00001;
+
 function convert(x,z){
-    return [origin.lat + (z-origin.z)*scale, origin.lon + (x-origin.x)*scale];
+    return [origin.lat+(z-origin.z)*scale, origin.lon+(x-origin.x)*scale];
 }
 
-// Snap till närmaste spårsegment
-function snapToTrack(lat, lon){
-    let closestPoint=null, minDist=Infinity;
-    for(let i=0;i<stations.length-1;i++){
-        const A=stations[i].pos, B=stations[i+1].pos;
-        const AP=[lat-A[0], lon-A[1]], AB=[B[0]-A[0], B[1]-A[1]];
-        const ab2=AB[0]*AB[0]+AB[1]*AB[1];
-        const t=Math.max(0, Math.min(1, (AP[0]*AB[0]+AP[1]*AB[1])/ab2));
-        const point=[A[0]+AB[0]*t, A[1]+AB[1]*t];
-        const dist=Math.hypot(lat-point[0], lon-point[1]);
-        if(dist<minDist){ minDist=dist; closestPoint=point; }
+// SNAP
+function snap(lat,lon){
+    let best=null,dist=9999;
+    for(let i=0;i<line14.length-1;i++){
+        let A=line14[i],B=line14[i+1];
+        let AP=[lat-A[0],lon-A[1]];
+        let AB=[B[0]-A[0],B[1]-A[1]];
+        let t=Math.max(0,Math.min(1,(AP[0]*AB[0]+AP[1]*AB[1])/(AB[0]*AB[0]+AB[1]*AB[1])));
+        let p=[A[0]+AB[0]*t,A[1]+AB[1]*t];
+        let d=Math.hypot(lat-p[0],lon-p[1]);
+        if(d<dist){dist=d; best=p;}
     }
-    return closestPoint;
+    return best;
 }
 
-// Beräkna vinkel längs spåret
-function getTrackAngle(lat, lon){
-    let closestIndex=0, minDist=Infinity;
-    for(let i=0;i<stations.length-1;i++){
-        const A=stations[i].pos, B=stations[i+1].pos;
-        const dx=B[1]-A[1], dy=B[0]-A[0];
-        const t=Math.max(0, Math.min(1, ((lat-A[0])*dy + (lon-A[1])*dx)/(dx*dx + dy*dy)));
-        const px=A[0]+dy*t, py=A[1]+dx*t;
-        const dist=Math.hypot(lat-px, lon-py);
-        if(dist<minDist){ closestIndex=i; minDist=dist; minDist=dist; }
+// STATION CHECK
+function nearStation(lat,lon){
+    for(let i=0;i<line14.length;i++){
+        let d=Math.hypot(lat-line14[i][0],lon-line14[i][1]);
+        if(d<0.001) return i;
     }
-    const A=stations[closestIndex].pos, B=stations[closestIndex+1].pos;
-    return Math.atan2(B[0]-A[0], B[1]-A[1])*180/Math.PI;
+    return -1;
 }
 
-// Närmaste station
-function nearestStation(lat, lon){
-    let closest=stations[0], min=Infinity;
-    stations.forEach(s=>{
-        let d=Math.hypot(s.pos[0]-lat,s.pos[1]-lon);
-        if(d<min){ min=d; closest=s; min=d; }
-    });
-    return closest.name;
-}
+// LOAD API
+async function load(){
+    try{
+        let res=await fetch("https://train-api-7hml.onrender.com/trains");
+        let data=await res.json();
 
-// Ladda tågdata och uppdatera kartan
-async function loadTrains(){
-    try {
-        const res = await fetch("https://train-api-7hml.onrender.com/trains");
-        if(!res.ok) throw new Error("Bad response från API");
-        const data = await res.json();
+        data.forEach(t=>{
+            let [lat,lon]=convert(t.x,t.z);
+            [lat,lon]=snap(lat,lon);
 
-        let info="";
-        data.forEach(train=>{
-            let [lat, lon] = convert(train.x, train.z);
-            [lat, lon] = snapToTrack(lat, lon);
+            targets[t.id]={lat,lon};
 
-            // ✅ Fix för rätt riktning
-            const rawAngle = getTrackAngle(lat, lon);
-            const angle = rawAngle + (train.dir === -1 ? 180 : 0);
-
-            const station = nearestStation(lat, lon);
-
-            if(markers[train.id]){
-                markers[train.id].setLatLng([lat, lon]);
-                markers[train.id].setRotationAngle(angle);
-            } else {
-                markers[train.id] = L.marker([lat, lon], {icon: trainIcon, rotationAngle: angle})
-                    .addTo(map)
-                    .bindPopup(`🚆 ${train.id}<br>📍 ${station}`);
+            if(!markers[t.id]){
+                markers[t.id]=L.marker([lat,lon],{icon:icon}).addTo(map);
+                speeds[t.id]=0.02;
             }
-            info += `🚆 ${train.id}<br>📍 ${station}<br><br>`;
         });
-        document.getElementById("info").innerHTML = info;
-    } catch(e){
-        console.warn("API fel, försöker om 3s", e);
-        setTimeout(loadTrains,3000); // retry
+
+    }catch{
+        setTimeout(load,3000);
     }
 }
 
-// Starta första laddning
-loadTrains();
+load();
+setInterval(load,2000);
 
-// Uppdatera var 3:e sekund
-setInterval(loadTrains, 3000);
+// ANIMATION ENGINE
+function animate(){
+    Object.keys(markers).forEach(id=>{
+        let m=markers[id];
+        let t=targets[id];
+        if(!t) return;
+
+        let c=m.getLatLng();
+
+        // station braking
+        let stationIndex=nearStation(t.lat,t.lon);
+        if(stationIndex!=-1){
+            speeds[id]*=0.95; // slow down
+        } else {
+            speeds[id]+=0.002; // accelerate
+            speeds[id]=Math.min(speeds[id],0.15);
+        }
+
+        let lat=c.lat+(t.lat-c.lat)*speeds[id];
+        let lon=c.lng+(t.lon-c.lng)*speeds[id];
+
+        let dx=t.lon-c.lng;
+        let dy=t.lat-c.lat;
+        let angle=Math.atan2(dy,dx)*180/Math.PI;
+
+        m.setLatLng([lat,lon]);
+        m.setRotationAngle(angle);
+
+        let station=stationIndex!=-1 ? names[stationIndex] : "Mellan stationer";
+
+        m.bindPopup(`🚆 ${id}<br>📍 ${station}`);
+
+        // FOLLOW CAMERA (första tåget)
+        if(id===Object.keys(markers)[0]){
+            map.setView([lat,lon],13);
+            document.getElementById("hud").innerHTML =
+                `🚆 ${id}<br>📍 ${station}`;
+        }
+    });
+
+    requestAnimationFrame(animate);
+}
+
+animate();
 </script>
+
 </body>
 </html>
