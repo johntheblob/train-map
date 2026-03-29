@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
 <meta charset="UTF-8">
-<title>metro Interactive – Linje 14</title>
+<title>SL Metro – Linje 14</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -37,12 +37,12 @@ html, body { margin: 0; height: 100%; }
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-// map
+// ================= MAP =================
 const map = L.map('map').setView([59.33, 18.06], 11);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// stations
+// ================= STATIONS =================
 const stations = [
     {name:"Fruängen", pos:[59.285,17.965]},
     {name:"Västertorp", pos:[59.292,17.970]},
@@ -63,7 +63,7 @@ const stations = [
     {name:"Mörby centrum", pos:[59.398,18.036]}
 ];
 
-// red lines
+// ================= LINE =================
 const lineCoords = stations.map(s => s.pos);
 
 L.polyline(lineCoords, {
@@ -71,7 +71,7 @@ L.polyline(lineCoords, {
     weight: 6
 }).addTo(map);
 
-// station markers
+// ================= STATION MARKERS =================
 stations.forEach(s => {
     L.circleMarker(s.pos, {
         radius: 6,
@@ -81,7 +81,7 @@ stations.forEach(s => {
     }).addTo(map).bindPopup(s.name);
 });
 
-// train icon
+// ================= TRAIN ICON =================
 const trainIcon = L.icon({
     iconUrl: "https://cdn-icons-png.flaticon.com/512/71/71298.png",
     iconSize: [32,32]
@@ -89,15 +89,24 @@ const trainIcon = L.icon({
 
 let markers = {};
 
-// ================= CONVERT =================
+// ================= 🔥 EXAKT CONVERT (FRUÄNGEN) =================
+const origin = {
+    x: 1396.36,
+    z: -2190.94,
+    lat: 59.285,
+    lon: 17.965
+};
+
+const scale = 0.00001;
+
 function convert(x, z) {
     return [
-        59.33 + (z / 10000),
-        18.06 + (x / 10000)
+        origin.lat + (z - origin.z) * scale,
+        origin.lon + (x - origin.x) * scale
     ];
 }
 
-//snap to track
+// ================= SNAP TO TRACK =================
 function snapToTrack(lat, lon) {
     let closestPoint = null;
     let minDist = Infinity;
@@ -131,7 +140,7 @@ function snapToTrack(lat, lon) {
     return closestPoint;
 }
 
-// near station snap
+// ================= NEAREST STATION =================
 function nearestStation(lat, lon) {
     let closest = stations[0];
     let min = Infinity;
@@ -140,7 +149,6 @@ function nearestStation(lat, lon) {
         let d = Math.hypot(s.pos[0]-lat, s.pos[1]-lon);
         if (d < min) {
             min = d;
-        
             closest = s;
         }
     });
@@ -148,12 +156,7 @@ function nearestStation(lat, lon) {
     return closest.name;
 }
 
-// smooth moving
-function moveSmooth(marker, newPos) {
-    marker.setLatLng(newPos);
-}
-
-// http loader
+// ================= LOAD TRAINS =================
 async function loadTrains() {
     try {
         const res = await fetch("https://train-api-7hml.onrender.com/trains");
@@ -164,13 +167,13 @@ async function loadTrains() {
         data.forEach(train => {
             let [lat, lon] = convert(train.x, train.z);
 
-            // snap to rail
+            // 🔥 EXAKT PÅ SPÅR
             [lat, lon] = snapToTrack(lat, lon);
 
             let station = nearestStation(lat, lon);
 
             if (markers[train.id]) {
-                moveSmooth(markers[train.id], [lat, lon]);
+                markers[train.id].setLatLng([lat, lon]);
             } else {
                 markers[train.id] = L.marker([lat, lon], {icon: trainIcon})
                     .addTo(map)
@@ -187,7 +190,7 @@ async function loadTrains() {
     }
 }
 
-// onstart load trains
+// ================= START =================
 loadTrains();
 setInterval(loadTrains, 3000);
 
